@@ -1,0 +1,7 @@
+__pycache__/
+.vscode/
+.env
+docker-compose.yaml
+venv
+.idea/
+init.sql

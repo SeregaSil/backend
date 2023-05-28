@@ -1,0 +1,4 @@
+fastapi[all]
+psycopg2
+python-jose
+# fastapi-sessions
