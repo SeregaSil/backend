@@ -12,6 +12,7 @@ class EmployeeGetSchedule(BaseModel):
     full_name: str
     post: str
     presence: bool
+    address_establishment: str
     
     @validator('start_work', pre=False)
     def parse_start_work(cls, value):
@@ -20,10 +21,6 @@ class EmployeeGetSchedule(BaseModel):
     @validator('end_work', pre=False)
     def parse_end_work(cls, value):
         return value.strftime('%H:%M')
-
-class EmployeeCreateSchedule(BaseModel):
-    establishment_id: int
-    
 
 class EmployeeInfo(SpecialistInfo):
     email: EmailStr | None
@@ -34,26 +31,15 @@ class EmployeeInfo(SpecialistInfo):
     services_id: List[int] | None
     telephone: str
 
-class EmployeeCreate(BaseModel):
+class EmployeeUpdate(BaseModel):
     email: EmailStr | None
     experience: int
     salary: int
     brief_info: str | None
     age: int
-    post: str
     services_id: List[int] | None = None
     full_name: str
     telephone: str
-    
-    @root_validator()
-    def parse_services_id(cls, values):
-        if values.get('services_id') and values.get('post') == 'Парикмахер':
-            return values
-        elif not values.get('services_id') and values.get('post') != 'Парикмахер':
-            return values
-        else:
-            raise ValueError("Invalid Data")
-        
     
     @validator('telephone')
     def parse_telephone(cls, value):
@@ -62,8 +48,16 @@ class EmployeeCreate(BaseModel):
           raise ValueError("Phone Number Invalid.")
       return value
 
-class EmployeeUpdate(EmployeeCreate):
-    pass
+class EmployeeCreate(EmployeeUpdate):
+    post: str
     
 class EmployeeRegister(BaseModel):
     password: str
+    
+    
+class EmployeeLoginData(BaseModel):
+    employee_id: int
+    full_name: str
+    telephone: str
+    post: str
+    login: str | None

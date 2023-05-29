@@ -7,7 +7,8 @@ CREATE TABLE clients(
   full_name VARCHAR(128) NOT NULL,
   telephone VARCHAR(18) UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NULL,
-  amount_visits SMALLINT DEFAULT 0 CONSTRAINT positive_amount_visits CHECK (amount_visits >= 0) NOT NULL, /* Триггер*/
+  amount_visits SMALLINT DEFAULT 0 CONSTRAINT positive_amount_visits 
+  CHECK (amount_visits >= 0) NOT NULL, /* Триггер*/
   bonus INT DEFAULT 0 CONSTRAINT positive_bonus CHECK (bonus >= 0) NOT NULL, /* Триггер */
   estate VARCHAR(10) DEFAULT 'Обычный' NOT NULL /* Триггер */
 );
@@ -41,7 +42,7 @@ CREATE TABLE checks(
   date_check DATE NOT NULL,
   total_cost INT DEFAULT 0 CONSTRAINT positive_total_cost CHECK (total_cost >= 0) NOT NULL, /* Триггер */
   paid BOOLEAN DEFAULT false NOT NULL,
-  grade NUMERIC(1) NULL,
+  grade NUMERIC(2, 1) NULL,
   client_id INT REFERENCES clients ON DELETE SET NULL NULL,
   employee_id INT REFERENCES employees ON DELETE SET NULL NULL
 );

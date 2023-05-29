@@ -3,7 +3,7 @@ from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from src.database import get_connector
 
-from src.schemas.employee import EmployeeGetSchedule, EmployeeInfo, EmployeeUpdate, EmployeeCreate, EmployeeRegister
+from src.schemas.employee import EmployeeGetSchedule, EmployeeInfo, EmployeeLoginData, EmployeeUpdate, EmployeeCreate, EmployeeRegister
 from src.core.auth import get_current_connector
 from psycopg2._psycopg import connection
 
@@ -40,6 +40,30 @@ def get_employee_by_telephone(
             return empl
 
 
+@router.get('/account', response_model=List[EmployeeLoginData] | EmployeeLoginData)
+def get_all_employee_account(
+    telephone: Annotated[
+        str | None, Query(min_length=18, max_length=18,
+                          regex='(\+7) (\(9(\d{2})\)) (\d{3})-(\d{2})-(\d{2})')
+    ] = None,
+    conn: connection = Depends(get_current_connector)
+    ):
+    with conn:
+        with conn.cursor() as cur:
+            if telephone:
+                cur.execute('''SELECT employee_id, full_name, telephone, post, login
+                                FROM employees
+                                    LEFT JOIN users USING(employee_id)
+                                WHERE telephone = %s''', (telephone,))
+                employee: EmployeeLoginData = cur.fetchone()
+                return employee
+            else:
+                cur.execute('''SELECT employee_id, full_name, telephone, post, login
+                                FROM employees
+                                    LEFT JOIN users USING(employee_id)''')
+                employees: List[EmployeeLoginData] = cur.fetchall()
+                return employees
+
 @router.get('/schedules', response_model=List[EmployeeGetSchedule])
 def get_employee_schedule(
     telephone: Annotated[
@@ -54,6 +78,24 @@ def get_employee_schedule(
         with conn.cursor() as cur:
             cur.execute('''SELECT * FROM get_employee_schedule(%s, %s, %s)''',
                         (telephone, date_work, presence,))
+            res: List[EmployeeGetSchedule] = cur.fetchall()
+            return res
+
+@router.get('/me/schedules', response_model=List[EmployeeGetSchedule])
+def get_my_schedule(
+    conn: connection = Depends(get_current_connector)
+):
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute('''SELECT schedule.schedule_id, schedule.date_work, 
+                            schedule.start_work, schedule.end_work, 
+                            employees.full_name, employees.post,
+                            schedule.presence, establishments.address_establishment
+                        FROM schedule
+                            INNER JOIN employees USING(employee_id)
+                            INNER JOIN establishments USING(establishment_id)
+                        WHERE employee_id::text = substring(current_user from '[0-9]+')
+                        ORDER BY date_work;''')
             res: List[EmployeeGetSchedule] = cur.fetchall()
             return res
 
@@ -119,11 +161,11 @@ def update_employee(employee_id: int, new_employee: EmployeeUpdate, conn: connec
         with conn.cursor() as cur:
             cur.execute('''UPDATE employees
                             SET telephone = %s, email = %s, experience = %s,
-                            salary = %s, brief_info = %s, age = %s, post = %s
+                            salary = %s, brief_info = %s, age = %s, full_name = %s
                             WHERE employee_id = %s''',
                         (new_employee.telephone, new_employee.email, new_employee.experience,
                          new_employee.salary, new_employee.brief_info, new_employee.age,
-                         new_employee.post, employee_id,))
+                         new_employee.full_name, employee_id,))
             if new_employee.services_id:
                 cur.execute('''DELETE FROM employee_service
                                 WHERE employee_id = %s''', (employee_id,))
@@ -148,8 +190,20 @@ def create_employee(new_employee: EmployeeCreate, conn: connection = Depends(get
                     cur.execute('''INSERT INTO employee_service(employee_id, service_id)
                                     VALUES(%s, %s)''', (employee_id, ser_id,))
 
+@router.get('/{employee_id}/account', response_model=EmployeeLoginData)
+def get_employee_account(employee_id: int, conn: connection = Depends(get_current_connector)):
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute('''SELECT employee_id, full_name, telephone, post, login
+                            FROM employees
+                                    LEFT JOIN users USING(employee_id)
+                            WHERE employee_id = %s''', (employee_id,))
+            empl: EmployeeLoginData = cur.fetchone()
+            return empl
+
+
 @router.post('/{employee_id}/account')
-def register_employee(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
+def register_employee_account(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
             cur.execute('''INSERT INTO users(hash_password, employee_id)
@@ -159,7 +213,7 @@ def register_employee(employee_id: int, employee_user: EmployeeRegister, conn: c
             return login
 
 @router.patch('/{employee_id}/account')
-def register_employee(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
+def update_employee_account(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
             cur.execute('''UPDATE users
@@ -169,9 +223,8 @@ def register_employee(employee_id: int, employee_user: EmployeeRegister, conn: c
             login = cur.fetchone()
             return login
 
-
 @router.delete('/{employee_id}/account')
-def register_employee(employee_id: int, conn: connection = Depends(get_current_connector)):
+def delete_employee_account(employee_id: int, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
             cur.execute('''DELETE FROM users

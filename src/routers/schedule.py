@@ -16,6 +16,10 @@ def delete_schedule(schedule_id: int, conn: connection = Depends(get_current_con
 def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
+            cur.execute('''SELECT date_work
+                            FROM schedule
+                            WHERE schedule_id = %s''', (schedule_id,))
+            old_date_work = cur.fetchone().get('date_work')
             cur.execute('''SELECT ARRAY (
                                 SELECT date_work 
                                 FROM schedule
@@ -25,7 +29,7 @@ def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, conn: connec
                                     WHERE schedule_id = %s)
                                 ) as dates''', (schedule_id,))
             dates = cur.fetchone().get('dates')
-            if new_schedule.date_work in dates:
+            if new_schedule.date_work in dates and old_date_work != new_schedule.date_work:
                 raise HTTPException(status_code=409, detail='Неприемлемые данные')
             cur.execute('''UPDATE schedule
                             SET date_work = %s,
@@ -36,12 +40,12 @@ def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, conn: connec
                             (new_schedule.date_work, new_schedule.start_work, new_schedule.end_work, new_schedule.presence, schedule_id,))
 
 
-# TODO Доделать выбор заведения при готовой авторизации и обернуть всё в процедуру
 @router.post('')
 def create_schedule(new_schedule: ScheduleCreate, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
-            establishment_id = 1
+            cur.execute('''SELECT establishment_id FROM establishments;''')
+            establishment_id = cur.fetchone().get('establishment_id')
             cur.execute('''SELECT employee_id FROM employees WHERE telephone = %s;''', (new_schedule.telephone,))
             employee_id = cur.fetchone().get('employee_id')
             if not employee_id:

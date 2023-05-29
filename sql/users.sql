@@ -31,6 +31,8 @@ GRANT USAGE ON SCHEMA public TO GROUP "manager";
 GRANT INSERT, DELETE ON TABLE 
 public.clients, public.checks, public.orders TO GROUP "manager";
 GRANT UPDATE(total_cost, paid)  ON TABLE public.checksTO GROUP "manager";
+-- GRANT UPDATE(amount_visits, bonus, estate) ON TABLE public.clients TO GROUP "manager";
+-- GRANT UPDATE(rating) ON TABLE public.employees TO GROUP "manager";
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO GROUP "manager";
 
 CREATE ROLE "worker" NOLOGIN NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;

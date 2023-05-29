@@ -42,7 +42,7 @@ def create_client(client: ClientCreate, conn: connection = Depends(get_current_c
     with conn:
         with conn.cursor() as cur:
             cur.execute('''INSERT INTO clients(full_name, telephone, email) VALUES(%s, %s, %s)''',
-                        (client.full_name, client.telephone, client.email))
+                        (client.full_name, client.telephone, client.email,))
 
 
 @router.delete('/{client_id}')
@@ -52,7 +52,7 @@ def delete_client(client_id: int, conn: connection = Depends(get_current_connect
             cur.execute('''DELETE FROM clients WHERE client_id = %s''', (client_id, ))
 
 @router.patch('/{client_id}')
-def update_client(client_id: int, client_info: ClientInfo, conn: connection = Depends(get_current_connector)):
+def update_client(client_id: int, client_info: ClientUpdate, conn: connection = Depends(get_current_connector)):
     with conn:
         with conn.cursor() as cur:
             cur.execute('''UPDATE clients

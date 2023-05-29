@@ -45,10 +45,9 @@ from src.core.auth import get_current_connector
 
 @router.post('/login')
 def login(request: OAuth2PasswordRequestForm = Depends(), conn: connection = Depends(get_connector)):
-    print(request.username)
     with conn as con:
         with con.cursor() as cur:
-            cur.execute('''SELECT user_id, full_name, telephone, email, post FROM users
+            cur.execute('''SELECT user_id, full_name, telephone, email, post, employee_id FROM users
                             INNER JOIN employees USING(employee_id)
                         WHERE login = %s AND hash_password = crypt(%s, hash_password)''', (request.username, request.password,))
             user = cur.fetchone()
@@ -60,7 +59,8 @@ def login(request: OAuth2PasswordRequestForm = Depends(), conn: connection = Dep
                     'telephone': user.get('telephone'),
                     'email': user.get('email'),
                     'post': user.get('post'),
-                    'access_token': token
+                    'access_token': token,
+                    'user_id': user.get('employee_id')
                     }
 
 @router.post('/me')

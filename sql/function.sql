@@ -206,7 +206,8 @@ RETURNS TABLE (
 	end_work TIME,
 	full_name VARCHAR(128),
 	post VARCHAR(13),
-	presence BOOLEAN
+	presence BOOLEAN,
+	address_establishment VARCHAR(128)
 ) 
 AS $$
 BEGIN
@@ -214,9 +215,10 @@ RETURN QUERY
 SELECT schedule.schedule_id, schedule.date_work, 
 	schedule.start_work, schedule.end_work, 
 	employees.full_name, employees.post,
-	schedule.presence
+	schedule.presence, establishments.address_establishment
 FROM schedule
 	INNER JOIN employees USING(employee_id)
+	INNER JOIN establishments USING(establishment_id)
 WHERE ((choosen_employee_telephone is NULL) OR (choosen_employee_telephone is not NULL AND employees.telephone = choosen_employee_telephone))
 	AND ((choosen_date is not NULL AND schedule.date_work >= choosen_date) OR (choosen_date is NULL AND schedule.date_work >= current_date))
 	AND ((choosen_presence is not NULL AND schedule.presence = choosen_presence) OR (choosen_presence is NULL))

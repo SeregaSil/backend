@@ -220,6 +220,15 @@ FOR ALL
 TO control
 USING(
 	true
+)
+WITH CHECK(
+	establishment_id = ANY(
+		SELECT establishment_id
+		FROM schedule
+		WHERE employee_id::text = substring(current_user from '[0-9]+')
+		 AND date_work = current_date
+		GROUP BY establishment_id;
+	)
 );
 
 CREATE POLICY schedule_for_worker ON schedule
