@@ -1,20 +1,24 @@
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from src.database import get_connector
-from src.core.auth import get_current_connector
-from psycopg2._psycopg import connection
+from src.core.auth import get_current_connector, User
+from psycopg2.errors import InsufficientPrivilege 
 from src.schemas.schedule import ScheduleUpdate, ScheduleCreate
 router = APIRouter(tags=['Schedules'], prefix='/schedules')
 
 @router.delete('/{schedule_id}')
-def delete_schedule(schedule_id: int, conn: connection = Depends(get_current_connector)):
-    with conn:
+def delete_schedule(schedule_id: int, user: User = Depends(get_current_connector)):
+    if user.role !='Управляющий':
+        raise InsufficientPrivilege    
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''DELETE FROM schedule WHERE schedule_id = %s;''', (schedule_id,))
 
 @router.patch('/{schedule_id}')
-def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, conn: connection = Depends(get_current_connector)):
-    with conn:
+def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, user: User = Depends(get_current_connector)):
+    if user.role !='Управляющий':
+        raise InsufficientPrivilege  
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT date_work
                             FROM schedule
@@ -41,8 +45,10 @@ def update_schedule(schedule_id: int, new_schedule: ScheduleUpdate, conn: connec
 
 
 @router.post('')
-def create_schedule(new_schedule: ScheduleCreate, conn: connection = Depends(get_current_connector)):
-    with conn:
+def create_schedule(new_schedule: ScheduleCreate, user: User = Depends(get_current_connector)):
+    if user.role !='Управляющий':
+        raise InsufficientPrivilege  
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT establishment_id FROM establishments;''')
             establishment_id = cur.fetchone().get('establishment_id')

@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from src.database import get_connector
 
 from src.schemas.employee import EmployeeGetSchedule, EmployeeInfo, EmployeeLoginData, EmployeeUpdate, EmployeeCreate, EmployeeRegister
-from src.core.auth import get_current_connector
-from psycopg2._psycopg import connection
+from src.core.auth import get_current_connector, User
+from psycopg2.errors import InsufficientPrivilege
 
 router = APIRouter(tags=['Employees'], prefix='/employees')
 
@@ -15,9 +15,11 @@ def get_employee_by_telephone(
     telephone: Annotated[
         str, Query(min_length=18, max_length=18,
                     regex='(\+7) (\(9(\d{2})\)) (\d{3})-(\d{2})-(\d{2})')
-    ], conn: connection = Depends(get_current_connector)
+    ], user: User = Depends(get_current_connector)
 ):
-    with conn:
+    if user.role not in ['Управляющий', 'Аналитик', 'Менеджер']:
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT employee_id, full_name, telephone, 
                                 email, experience, salary, brief_info, 
@@ -46,9 +48,11 @@ def get_all_employee_account(
         str | None, Query(min_length=18, max_length=18,
                           regex='(\+7) (\(9(\d{2})\)) (\d{3})-(\d{2})-(\d{2})')
     ] = None,
-    conn: connection = Depends(get_current_connector)
+    user: User = Depends(get_current_connector)
     ):
-    with conn:
+    if user.role != 'Администратор':
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             if telephone:
                 cur.execute('''SELECT employee_id, full_name, telephone, post, login
@@ -72,9 +76,11 @@ def get_employee_schedule(
     ] = None,
     date_work: date | None = None,
     presence: bool | None = None, 
-    conn: connection = Depends(get_current_connector)
+    user: User = Depends(get_current_connector)
 ):
-    with conn:
+    if user.role not in ['Управляющий', 'Менеджер']:
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT * FROM get_employee_schedule(%s, %s, %s)''',
                         (telephone, date_work, presence,))
@@ -83,9 +89,9 @@ def get_employee_schedule(
 
 @router.get('/me/schedules', response_model=List[EmployeeGetSchedule])
 def get_my_schedule(
-    conn: connection = Depends(get_current_connector)
+    user: User = Depends(get_current_connector)
 ):
-    with conn:
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT schedule.schedule_id, schedule.date_work, 
                             schedule.start_work, schedule.end_work, 
@@ -101,8 +107,10 @@ def get_my_schedule(
 
 
 @router.get('', response_model=List[EmployeeInfo])
-def get_all_employees(conn: connection = Depends(get_current_connector)):
-    with conn:
+def get_all_employees(user: User = Depends(get_current_connector)):
+    if user.role not in ['Управляющий', 'Аналитик', 'Менеджер']:
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute(''' SELECT employee_id, full_name, telephone, 
                                 email, experience, salary, brief_info, 
@@ -123,8 +131,10 @@ def get_all_employees(conn: connection = Depends(get_current_connector)):
 
 
 @router.get('/{employee_id}', response_model=EmployeeInfo)
-def get_employee(employee_id: int, conn: connection = Depends(get_current_connector)):
-    with conn:
+def get_employee(employee_id: int, user: User = Depends(get_current_connector)):
+    if user.role not in ['Управляющий', 'Аналитик', 'Менеджер']:
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT employee_id, full_name, telephone, 
                                 email, experience, salary, brief_info, 
@@ -148,16 +158,20 @@ def get_employee(employee_id: int, conn: connection = Depends(get_current_connec
 
 
 @router.delete('/{employee_id}')
-def delete_employee(employee_id: int, conn: connection = Depends(get_current_connector)):
-    with conn:
+def delete_employee(employee_id: int, user: User = Depends(get_current_connector)):
+    if user.role != 'Управляющий':
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute(
                 '''DELETE FROM employees WHERE employee_id = %s''', (employee_id,))
 
 
 @router.put('/{employee_id}')
-def update_employee(employee_id: int, new_employee: EmployeeUpdate, conn: connection = Depends(get_current_connector)):
-    with conn:
+def update_employee(employee_id: int, new_employee: EmployeeUpdate, user: User = Depends(get_current_connector)):
+    if user.role != 'Управляющий':
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''UPDATE employees
                             SET telephone = %s, email = %s, experience = %s,
@@ -175,8 +189,10 @@ def update_employee(employee_id: int, new_employee: EmployeeUpdate, conn: connec
 
 
 @router.post('')
-def create_employee(new_employee: EmployeeCreate, conn: connection = Depends(get_current_connector)):
-    with conn:
+def create_employee(new_employee: EmployeeCreate, user: User = Depends(get_current_connector)):
+    if user.role != 'Управляющий':
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''INSERT INTO employees(full_name, telephone, email, 
                                 experience, salary, brief_info, age, post)
@@ -191,8 +207,10 @@ def create_employee(new_employee: EmployeeCreate, conn: connection = Depends(get
                                     VALUES(%s, %s)''', (employee_id, ser_id,))
 
 @router.get('/{employee_id}/account', response_model=EmployeeLoginData)
-def get_employee_account(employee_id: int, conn: connection = Depends(get_current_connector)):
-    with conn:
+def get_employee_account(employee_id: int, user: User = Depends(get_current_connector)):
+    if user.role != 'Администратор':
+        raise InsufficientPrivilege
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''SELECT employee_id, full_name, telephone, post, login
                             FROM employees
@@ -203,8 +221,10 @@ def get_employee_account(employee_id: int, conn: connection = Depends(get_curren
 
 
 @router.post('/{employee_id}/account')
-def register_employee_account(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
-    with conn:
+def register_employee_account(employee_id: int, employee_user: EmployeeRegister, user: User = Depends(get_current_connector)):
+    if user.role != 'Администратор':
+        raise InsufficientPrivilege    
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''INSERT INTO users(hash_password, employee_id)
                             VALUES(%s, %s)
@@ -213,8 +233,10 @@ def register_employee_account(employee_id: int, employee_user: EmployeeRegister,
             return login
 
 @router.patch('/{employee_id}/account')
-def update_employee_account(employee_id: int, employee_user: EmployeeRegister, conn: connection = Depends(get_current_connector)):
-    with conn:
+def update_employee_account(employee_id: int, employee_user: EmployeeRegister, user: User = Depends(get_current_connector)):
+    if user.role != 'Администратор':
+        raise InsufficientPrivilege    
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''UPDATE users
                             SET hash_password = %s
@@ -224,8 +246,10 @@ def update_employee_account(employee_id: int, employee_user: EmployeeRegister, c
             return login
 
 @router.delete('/{employee_id}/account')
-def delete_employee_account(employee_id: int, conn: connection = Depends(get_current_connector)):
-    with conn:
+def delete_employee_account(employee_id: int, user: User = Depends(get_current_connector)):
+    if user.role != 'Администратор':
+        raise InsufficientPrivilege    
+    with user.conn as conn:
         with conn.cursor() as cur:
             cur.execute('''DELETE FROM users
                             WHERE employee_id = %s''', (employee_id,))

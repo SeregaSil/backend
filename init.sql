@@ -169,26 +169,44 @@ CREATE OR REPLACE FUNCTION create_new_user() RETURNS TRIGGER AS $$
     SELECT post INTO empl_post FROM employees WHERE employee_id = NEW.employee_id;
     IF empl_post = 'Администратор' THEN
       role_name := format('admin#%s', NEW.employee_id);
-      EXECUTE format('CREATE ROLE "%s" WITH LOGIN SUPERUSER INHERIT CREATEROLE', role_name);
+      EXECUTE format('CREATE ROLE %I WITH PASSWORD %L LOGIN SUPERUSER INHERIT CREATEROLE', role_name, NEW.hash_password);
       EXECUTE format('GRANT admin TO "%s"', role_name);
     ELSIF empl_post = 'Управляющий' THEN
       role_name := format('control#%s', NEW.employee_id);
-      EXECUTE format('CREATE ROLE "%s" WITH LOGIN INHERIT', role_name);
+      EXECUTE format('CREATE ROLE %I WITH PASSWORD %L LOGIN INHERIT', role_name, NEW.hash_password);
       EXECUTE format('GRANT control TO "%s"', role_name);
     ELSIF empl_post = 'Менеджер' THEN
       role_name := format('manager#%s', NEW.employee_id);
-      EXECUTE format('CREATE ROLE "%s" WITH LOGIN INHERIT', role_name);
+      EXECUTE format('CREATE ROLE %I WITH PASSWORD %L LOGIN INHERIT', role_name, NEW.hash_password);
       EXECUTE format('GRANT manager TO "%s"', role_name);
     ELSIF empl_post = 'Аналитик' THEN
       role_name := format('analyst#%s', NEW.employee_id);
-      EXECUTE format('CREATE ROLE "%s" WITH LOGIN INHERIT', role_name);
+      EXECUTE format('CREATE ROLE %I WITH PASSWORD %L LOGIN INHERIT', role_name, NEW.hash_password);
       EXECUTE format('GRANT analyst TO "%s"', role_name);
     ELSE
       role_name := format('worker#%s', NEW.employee_id);
-      EXECUTE format('CREATE ROLE "%s" WITH LOGIN INHERIT', role_name);
+      EXECUTE format('CREATE ROLE %I WITH PASSWORD %L LOGIN INHERIT', role_name, NEW.hash_password);
       EXECUTE format('GRANT worker TO "%s"', role_name);
     END IF;
+    NEW.hash_password = crypt(
+      NEW.hash_password,
+      (SELECT telephone FROM employees WHERE employee_id = NEW.employee_id)
+    );
     NEW.login = role_name;
+    RETURN NEW;
+  END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION update_user() RETURNS TRIGGER AS $$
+  DECLARE
+    empl_post VARCHAR(13);
+  BEGIN
+    EXECUTE format('ALTER ROLE %I WITH PASSWORD %L', OLD.login, NEW.hash_password);
+    NEW.hash_password = crypt(
+      NEW.hash_password,
+      (SELECT telephone FROM employees WHERE employee_id = NEW.employee_id)
+    );
     RETURN NEW;
   END;
 $$ LANGUAGE plpgsql;
@@ -202,15 +220,15 @@ CREATE OR REPLACE FUNCTION delete_user() RETURNS TRIGGER AS $$
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION hash_user_password() RETURNS TRIGGER AS $$
-  BEGIN
-    NEW.hash_password = crypt(
-      NEW.hash_password,
-      (SELECT telephone FROM employees WHERE employee_id = NEW.employee_id)
-    );
-    RETURN NEW;
-  END;
-$$ LANGUAGE plpgsql;
+-- CREATE OR REPLACE FUNCTION hash_user_password() RETURNS TRIGGER AS $$
+--   BEGIN
+--     NEW.hash_password = crypt(
+--       NEW.hash_password,
+--       (SELECT telephone FROM employees WHERE employee_id = NEW.employee_id)
+--     );
+--     RETURN NEW;
+--   END;
+-- $$ LANGUAGE plpgsql;
 
 
 CREATE TRIGGER count_employees AFTER
@@ -241,17 +259,22 @@ FOR EACH ROW
 WHEN (NEW.grade is not NULL)
 EXECUTE FUNCTION update_rating_employee();
 
+CREATE TRIGGER new_user BEFORE
+INSERT ON users
+FOR EACH ROW EXECUTE FUNCTION create_new_user();
+
+CREATE TRIGGER new_user_password BEFORE
+UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION update_user();
+
 CREATE TRIGGER clear_user AFTER
 DELETE ON users
 FOR EACH ROW EXECUTE FUNCTION delete_user();
 
-CREATE TRIGGER hashing BEFORE
-INSERT OR UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION hash_user_password();
+-- CREATE TRIGGER hashing AFTER
+-- INSERT OR UPDATE ON users
+-- FOR EACH ROW EXECUTE FUNCTION hash_user_password();
 
-CREATE TRIGGER new_user BEFORE
-INSERT ON users
-FOR EACH ROW EXECUTE FUNCTION create_new_user();
 
 /* ФУНКЦИИ */
 CREATE OR REPLACE FUNCTION get_all_checks(find_date date, is_paid BOOLEAN DEFAULT NULL) 
@@ -304,8 +327,7 @@ RETURN QUERY SELECT
 			 LEFT JOIN schedule USING(establishment_id)
 			 LEFT JOIN checks ON checks.employee_id = schedule.employee_id 
 							   AND schedule.date_work = checks.date_check
-							   AND checks.date_check >= start_date
-							   AND checks.date_check <= end_date 
+							   AND (checks.date_check BETWEEN start_date AND end_date)
 							   AND checks.paid is True
 		GROUP BY establishments.establishment_id;
 END; $$ 
@@ -329,8 +351,7 @@ SELECT employees.employee_id, employees.full_name,
 		COUNT(check_id)::INTEGER as amount_checks
 FROM employees
 	 LEFT JOIN checks ON checks.employee_id = employees.employee_id 
-	 		AND checks.date_check >= start_date 
-			AND checks.date_check <= end_date 
+	 		AND (checks.date_check BETWEEN start_date AND end_date)
 			AND checks.paid is True
 WHERE employees.post IN ('Парикмахер')
 GROUP BY employees.employee_id;
@@ -355,8 +376,7 @@ services_plan = plpy.prepare(
 		FROM services
 			LEFT JOIN orders USING(service_id)
 			LEFT JOIN checks ON checks.check_id = orders.check_id 
-							 AND checks.date_check >= $1  
-							 AND checks.date_check <= $2
+							 AND (checks.date_check BETWEEN $1 AND $2)
 							 AND checks.paid is True
 		GROUP BY services.service_id
 		ORDER BY services.service_id;''',
@@ -376,7 +396,7 @@ checks_plan = plpy.prepare('''
 	FROM checks ch
 		INNER JOIN orders USING(check_id)
 		INNER JOIN services USING(service_id)
-	WHERE ch.paid is True AND ch.date_check >= $1 AND ch.date_check <= $2
+	WHERE ch.paid is True AND (ch.date_check BETWEEN $1 AND $2)
 	GROUP BY ch.check_id;''',
 		['date', 'date'])
 checks = checks_plan.execute([start_date, end_date])
@@ -472,17 +492,18 @@ LANGUAGE 'plpython3u';
 /* ПОЛЬЗОВАТЕЛИ/РОЛИ */
 CREATE ROLE "admin" NOLOGIN SUPERUSER INHERIT CREATEROLE ;
 GRANT CONNECT ON DATABASE "barber" TO GROUP "admin"; 
--- GRANT USAGE ON SCHEMA public TO GROUP "admin";
+GRANT USAGE ON SCHEMA public TO GROUP "admin";
 GRANT ALL ON ALL TABLES IN SCHEMA public TO GROUP "admin";
 
 CREATE ROLE "analyst" NOLOGIN INHERIT ;
+GRANT "pg_write_server_files" TO "analyst";
 GRANT CONNECT ON DATABASE "barber" TO GROUP "analyst";
--- GRANT USAGE ON SCHEMA public TO GROUP "analyst";
+GRANT USAGE ON SCHEMA public TO GROUP "analyst";
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO GROUP "analyst";
 
 CREATE ROLE "manager" NOLOGIN INHERIT;
 GRANT CONNECT ON DATABASE "barber" TO GROUP "manager";
--- GRANT USAGE ON SCHEMA public TO GROUP "manager";
+GRANT USAGE ON SCHEMA public TO GROUP "manager";
 GRANT INSERT, DELETE ON TABLE 
 public.clients, public.checks, public.orders TO GROUP "manager";
 GRANT UPDATE(total_cost, paid, grade) ON TABLE public.checks TO GROUP "manager";
@@ -493,13 +514,13 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO GROUP "manager";
 
 CREATE ROLE "worker" NOLOGIN INHERIT;
 GRANT CONNECT ON DATABASE "barber" TO GROUP "worker";
--- GRANT USAGE ON SCHEMA public TO GROUP "worker";
+GRANT USAGE ON SCHEMA public TO GROUP "worker";
 GRANT SELECT ON public.schedule, public.employees, public.establishments, 
 public.employee_service, public.services, public.users TO GROUP "worker";
 
 CREATE ROLE "control" NOLOGIN INHERIT;
 GRANT CONNECT ON DATABASE "barber" TO GROUP "control"; 
--- GRANT USAGE ON SCHEMA public TO GROUP "control";
+GRANT USAGE ON SCHEMA public TO GROUP "control";
 GRANT ALL ON public.establishments, public.schedule, public.employees, 
 public.employee_service, public.checks, public.orders, public.clients TO GROUP "control";
 GRANT SELECT ON public.users TO GROUP "control";
@@ -782,3 +803,6 @@ VALUES ('admin', 10),
         ('a11', 11),
         ('m4', 4),
         ('c8', 8)
+
+-- COPY (SELECT * FROM employees_profit_for_period('2020-01-01', '2023-01-01')) TO '/tmp/employee_report.csv' 
+-- DELIMITER ',' CSV HEADER;

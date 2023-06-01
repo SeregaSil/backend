@@ -16,7 +16,6 @@ def get_connector():
             port=DATABASE_PORT,
             connection_factory=RealDictConnection
         )
-        # connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         connection.set_client_encoding('UTF8')
         connection.autocommit=False
         return connection

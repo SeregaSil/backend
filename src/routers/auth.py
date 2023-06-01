@@ -41,7 +41,6 @@ router = APIRouter(tags=['Auth'])
 #         raise HTTPException(status_code=404, detail='Not authenticated')
 
 from src.core.jwtoken import create_token
-from src.core.auth import get_current_connector
 
 @router.post('/login')
 def login(request: OAuth2PasswordRequestForm = Depends(), conn: connection = Depends(get_connector)):
@@ -62,13 +61,3 @@ def login(request: OAuth2PasswordRequestForm = Depends(), conn: connection = Dep
                     'access_token': token,
                     'user_id': user.get('employee_id')
                     }
-
-@router.post('/me')
-def me(conn: connection = Depends(get_current_connector)):
-    with conn as con:
-        with con.cursor() as cur:
-            cur.execute('''SELECT current_user;''')
-            res = cur.fetchone()
-            return {
-                'dad': res.get('current_user')
-            }

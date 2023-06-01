@@ -67,7 +67,6 @@ def CheckViolation_exception_handler(request: Request, exc: CheckViolation):
     
 @app.exception_handler(InsufficientPrivilege)
 def InsufficientPrivilege_exception_handler(request: Request, exc: InsufficientPrivilege):
-    print(exc)
     return JSONResponse(
         status_code=403,
         content={"message": "В разрешении отказано"},
